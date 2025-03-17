@@ -4,18 +4,13 @@ by Bhuiyan, Guo et al. (2018)
 https://dl.acm.org/doi/10.1145/3241049
 """
 
-from ast import List
+from typing import List
 from queue import PriorityQueue
 
 from ..dag import DAGTask, Schedule, Subtask, CPUs
 
 
-# class DecomposedSchedule:
-#     sched: Schedule
-#     splits: List[float]
-
-
-def task_decomposition(task: DAGTask) -> Schedule:
+def init_schedule(task: DAGTask) -> Schedule:
     """
     First stage of the method the paper introduced.
     It assumes infinite cpu,
@@ -87,9 +82,14 @@ def strech_makespan(sched: Schedule) -> Schedule:
 
     return sched
 
+def slice_tasks(sched: Schedule):
+    
+    slice_points = []
+
+    for subtask in 
 
 def schedule_federated(task: DAGTask) -> Schedule:
-    decomp = task_decomposition(task)
+    decomp = init_schedule(task)
     # decomp.show()
     streched = strech_makespan(decomp)
     # streched.show()

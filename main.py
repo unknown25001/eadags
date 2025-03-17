@@ -1,7 +1,11 @@
+import pathlib
+import subprocess
 import matplotlib.pyplot as plt
 
-from eadags.dag import DAGTask
+from eadags.dag import DAGTask, dag_from_process
 from eadags.algo import schedule_federated
+
+# proc = subprocess.Popen(["bash", pathlib.Path("./tmp/run.sh")], stdout=subprocess.PIPE)
 
 
 def main():
@@ -16,14 +20,26 @@ def main():
         },
         deadline=12,
     )
-    print(task.prec)
+
+    # task = DAGTask(
+    #     cost={1: 1, 2: 2, 3: 2},
+    #     succ={
+    #         1: {2, 3},
+    #     },
+    # )
+
+    # for dag in dag_from_process(proc):
+    #     dag.show()
 
     sched = schedule_federated(task)
 
-    fig, (ax1, ax2) = plt.subplots(ncols=2)
+    # fig, (ax1, ax2) = plt.subplots(ncols=2)
 
-    task.visualize_to(ax1)
-    sched.visualize_to(ax2)
+    # task.visualize_to(ax1)
+    # sched.visualize_to(ax2)
+
+    fig, (ax1) = plt.subplots(ncols=1)
+    sched.visualize_to(ax1)
 
     plt.show()
 

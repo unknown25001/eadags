@@ -1,9 +1,11 @@
+import json
+import subprocess
 import pandas as pd
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from typing import Dict, Optional, List
+from typing import Dict, Iterable, Optional, List, Set
 from dataclasses import dataclass, field
 
 
@@ -11,10 +13,11 @@ from dataclasses import dataclass, field
 class DAGTask:
     cost: Dict[int, float]
 
-    succ: Optional[Dict[int, float]] = field(default=None)
-    prec: Optional[Dict[int, float]] = field(default=None)
+    succ: Optional[Dict[int, Set[int]]] = field(default=None)
+    prec: Optional[Dict[int, Set[int]]] = field(default=None)
 
     deadline: float = field(default=12)
+    core: int = field(default=1)
 
     @property
     def nodes(self):
@@ -44,6 +47,9 @@ class DAGTask:
             if node not in self.prec:
                 self.prec[node] = set()
 
+        self.succ = {k: set(v) for k, v in self.succ.items()}
+        self.prec = {k: set(v) for k, v in self.prec.items()}
+
     def visualize_to(self, ax: plt.Axes):
 
         graph = nx.DiGraph([(u, v) for u, vs in self.succ.items() for v in vs])
@@ -63,7 +69,7 @@ class DAGTask:
             node_size=1500,
             labels={node: f"N{node}\n{self.cost[node]:.2f}" for node in self.nodes},
         )
-        ax.set_title(f"Deadline: {self.deadline}")
+        # ax.set_title(f"Deadline: {self.deadline}")
 
     def show(self):
         self.visualize_to(plt.gca())
@@ -149,3 +155,26 @@ class CPUs:
 
     def assign(self, subtask: Subtask):
         self.jobs[subtask.cpu].append(subtask)
+
+
+def dag_from_process(proc: subprocess.Popen):
+
+    while proc.poll() is None:
+
+        raw_succ = proc.stdout.readline()
+        raw_cost = proc.stdout.readline()
+        raw_priority = proc.stdout.readline()
+        raw_core = proc.stdout.readline()
+
+        succ = eval(raw_succ)
+        cost = eval(raw_cost)
+        priority = eval(raw_priority)
+        core = eval(raw_core)
+
+        dag = DAGTask(
+            cost=cost,
+            succ=succ,
+            deadline=-1,
+            core=core,
+        )
+        yield dag
