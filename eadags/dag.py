@@ -1,4 +1,5 @@
 import json
+import math
 import subprocess
 import pandas as pd
 import numpy as np
@@ -7,6 +8,25 @@ import matplotlib.pyplot as plt
 
 from typing import Dict, Iterable, Optional, List, Set
 from dataclasses import dataclass, field
+
+
+beta = 0.5
+alpha = 1.7
+gamma = 2.0
+
+
+def critical_freq():
+    return math.sqrt(alpha / beta)
+
+
+@dataclass
+class TimeSlice:
+    begin_time: float
+    finish_time: float
+    length: float = field(init=False)
+
+    def __post_init__(self):
+        self.length = self.finish_time - self.begin_time
 
 
 @dataclass
@@ -26,6 +46,7 @@ class DAGTask:
     @property
     def cmap(self):
         return plt.get_cmap("tab20")(np.linspace(0.15, 0.85, len(self.nodes)))
+        # return plt.get_cmap("tab20")(np.linspace(0.15, 0.85, 512))
 
     def __post_init__(self):
         assert self.succ or self.prec
@@ -83,6 +104,19 @@ class Subtask:
     cpu: int
     begin_time: float
     finish_time: float
+    subtask_name: str = field(default="")
+    in_slice: int = field(default=-1)
+
+    def __post_init__(self):
+        if self.subtask_name == "":
+            self.subtask_name = f"N{self.node}"
+
+    def power(self):
+        if self.finish_time - self.begin_time < 1e-1:
+            return 0
+
+        freq = self.cost / (self.finish_time - self.begin_time)
+        return alpha * (freq**gamma) + beta
 
 
 class Schedule:
@@ -109,34 +143,96 @@ class Schedule:
     def add(self, subtask: Subtask):
         self.schedule.append(subtask)
 
-    def visualize_to(self, ax: plt.Axes):
+    def makespan(self):
+        return max(subtask.finish_time for subtask in self.schedule)
+
+    def visualize_to(self, ax: plt.Axes, *, label_style="", cmap=None, title=""):
+
+        if cmap is None:
+            cmap = self.cmap
+
         df = pd.DataFrame(self.schedule)
 
         xlim = 0, max([self.task.deadline, *df.finish_time])
         ax.set_xlim(xlim)
 
+        # bars
         ax.barh(
             y=df.cpu,
             width=df.finish_time - df.begin_time,
             left=df.begin_time,
             tick_label=df.node,
-            # color=plt.get_cmap("RdYlGn")(np.linspace(0.15, 0.85, len(df))),
-            color=self.cmap,
+            color=cmap,
             height=0.5,
         )
+
+        # text in bars
         for _, row in df.iterrows():
+            label = {
+                "": "",
+                "cost": f"C={row.cost:.2f}",
+                "time": f"T={(row.finish_time - row.begin_time):.2f}",
+            }[label_style]
             ax.text(
                 x=row.begin_time + 0.5 * (row.finish_time - row.begin_time),
                 y=row.cpu,
-                s=f"N{int(row.node)}\n{row.cost:.2f}",
+                s=(
+                    f"{row.subtask_name}\n{label}"
+                ),
                 color="black",
                 ha="center",
                 va="center",
             )
 
+        # title
+        ax.set_title(title)
+
     def show(self):
         self.visualize_to(plt.gca())
         plt.show()
+
+    def power(self) -> float:
+
+        power_dyn = 0.0
+        for subtask in self.schedule:
+            power_dyn += subtask.power()
+
+        makespan = max([subtask.finish_time for subtask in self.schedule])
+        cpu_num = len(set(subtask.cpu for subtask in self.schedule))
+        power_sta = cpu_num * beta * makespan
+
+        return power_dyn + power_sta
+
+
+class SlicedSchedule(Schedule):
+
+    slice_points: List[float]
+    # subtask_to_node: Dict[int, int]
+    time_slices: List[TimeSlice]
+
+    def __init__(self, task=None):
+        super().__init__(task)
+        self.slice_points = []
+        self.time_slices = []
+
+    def subtasks_idx_of_node(self, node: int) -> List[int]:
+        ret = []
+        return ret
+
+    def visualize_to(self, ax: plt.Axes, *, show_cost=False, cmap=None):
+
+        cmap = np.array(
+            [
+                self.task.cmap[idx - 1]
+                for idx in [subtask.node for subtask in self.schedule]
+            ]
+        )
+
+        super().visualize_to(ax, show_cost=True, cmap=cmap)
+
+        # slices
+        for slice_point in self.slice_points:
+            ax.axvline(slice_point, color="black", linestyle="--", linewidth=0.5)
 
 
 @dataclass
@@ -155,6 +251,54 @@ class CPUs:
 
     def assign(self, subtask: Subtask):
         self.jobs[subtask.cpu].append(subtask)
+
+
+class FreqProfile:
+    
+    sched: Schedule
+
+    def __init__(self, sched: Schedule):
+        self.sched = sched
+
+    def visualize_to(self, ax: plt.Axes, *, show_cost=False):
+
+        df = pd.DataFrame(self.sched.schedule)
+
+        xlim = 0, max([self.task.deadline, *df.finish_time])
+        ax.set_xlim(xlim)
+
+        # bars
+        # cmap = 
+
+        # TODO:
+
+        ax.barh(
+            y=df.cpu,
+            width=df.finish_time - df.begin_time,
+            left=df.begin_time,
+            tick_label=df.node,
+            color=cmap,
+            height=0.5,
+        )
+
+        # text in bars
+        for _, row in df.iterrows():
+            ax.text(
+                x=row.begin_time + 0.5 * (row.finish_time - row.begin_time),
+                y=row.cpu,
+                s=(
+                    f"{row.subtask_name}\n{row.cost:.2f}"
+                    if show_cost
+                    else f"N{int(row.subtask_name)}"
+                ),
+                color="black",
+                ha="center",
+                va="center",
+            )
+
+    def show(self):
+        self.visualize_to(plt.gca())
+        plt.show()
 
 
 def dag_from_process(proc: subprocess.Popen):

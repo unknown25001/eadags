@@ -34,12 +34,12 @@ def main():
     sched = schedule_federated(task)
 
     # fig, (ax1, ax2) = plt.subplots(ncols=2)
-
     # task.visualize_to(ax1)
     # sched.visualize_to(ax2)
 
     fig, (ax1) = plt.subplots(ncols=1)
-    sched.visualize_to(ax1)
+    # task.visualize_to(ax1)
+    sched.visualize_to(ax1, label_style="time", title=f"Power: {sched.power():.2f}, Makespan: {sched.makespan():.2f}")
 
     plt.show()
 
