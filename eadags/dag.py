@@ -1,3 +1,4 @@
+import enum
 import json
 import math
 import subprocess
@@ -74,7 +75,7 @@ class DAGTask:
         self.succ = {k: set(v) for k, v in self.succ.items()}
         self.prec = {k: set(v) for k, v in self.prec.items()}
 
-    def visualize_to(self, ax: plt.Axes):
+    def visualize_to(self, ax: plt.Axes, *, title=""):
 
         graph = nx.DiGraph([(u, v) for u, vs in self.succ.items() for v in vs])
 
@@ -93,7 +94,7 @@ class DAGTask:
             node_size=1500,
             labels={node: f"N{node}\n{self.cost[node]:.2f}" for node in self.nodes},
         )
-        # ax.set_title(f"Deadline: {self.deadline}")
+        ax.set_title(title)
 
     def show(self):
         self.visualize_to(plt.gca())
@@ -114,9 +115,9 @@ class Subtask:
         if self.subtask_name == "":
             self.subtask_name = f"N{self.node}"
 
-    def power(self):
-        if self.finish_time - self.begin_time < 1e-2:
-            return 0
+    def power(self) -> float:
+        if self.finish_time - self.begin_time < 1e-4:
+            return 999999
 
         freq = self.cost / (self.finish_time - self.begin_time)
         return alpha * (freq**gamma) + beta
@@ -131,6 +132,7 @@ class Subtask:
             subtask_name=self.subtask_name,
             in_slice=self.in_slice,
         )
+
 
 class Schedule:
     task: DAGTask
@@ -171,7 +173,7 @@ class Schedule:
 
         df = pd.DataFrame(self.schedule)
 
-        xlim = 0, max([self.task.deadline, *df.finish_time])
+        xlim = 0, max([sc.finish_time for sc in self.schedule])
         ax.set_xlim(xlim)
 
         # bars
@@ -242,6 +244,20 @@ class SlicedSchedule(Schedule):
 
         return sched
 
+    def power(self):
+        merged = merge_slices(self)
+        return merged.power()
+        # power_dyn = 0
+        # for node in self.task.nodes:
+        #     subtasks_of_node = [st for st in self.schedule if st.node == self.node]
+        #     times_of_subtasks = [st.finish_time - st.begin_time for st in subtasks_of_node]
+        #     time_of_node = sum(times_of_subtasks)
+        #     freq = self.task.cost[node] / time_of_node
+
+        # makespan = max([subtask.finish_time for subtask in self.schedule])
+        # cpu_num = len(set(subtask.cpu for subtask in self.schedule))
+        # power_sta = cpu_num * beta * makespan
+
     def subtasks_idx_of_node(self, node: int) -> List[int]:
         ret = []
         return ret
@@ -255,11 +271,22 @@ class SlicedSchedule(Schedule):
             ]
         )
 
-        super().visualize_to(ax, label_style="cost", cmap=cmap, title=title)
+        super().visualize_to(ax, label_style=label_style, cmap=cmap, title=title)
 
         # slices
         for slice_point in self.slice_points:
             ax.axvline(slice_point, color="black", linestyle="--", linewidth=0.5)
+
+        # text between the vertical slice lines, indicating the gap between lines
+        # for sl in self.time_slices:
+        #     ax.text(
+        #         x=(sl.begin_time + sl.finish_time) / 2,
+        #         y=self.m + 0.5,
+        #         s=f"{sl.length:.2f}",
+        #         color="black",
+        #         ha="center",
+        #         va="center",
+        #     )
 
 
 @dataclass
@@ -337,10 +364,16 @@ def dag_from_process(proc: subprocess.Popen):
         raw_priority = proc.stdout.readline()
         raw_core = proc.stdout.readline()
 
+        # print(raw_cost)
+        # print(raw_succ)
+
         succ = eval(raw_succ)
         cost = eval(raw_cost)
         priority = eval(raw_priority)
         core = eval(raw_core)
+
+        # for k in cost.keys():
+        #     cost[k] = float(int(cost[k]) // 10)
 
         dag = DAGTask(
             cost=cost,
@@ -349,3 +382,25 @@ def dag_from_process(proc: subprocess.Popen):
             core=core,
         )
         yield dag
+
+
+def merge_slices(sched: SlicedSchedule) -> Schedule:
+
+    merged_sched = Schedule(task=sched.task)
+
+    for node in sched.task.nodes:
+
+        subtasks_of_node = [st for st in sched.schedule if st.node == node]
+
+        merged_subtask = Subtask(
+            node=node,
+            cost=sum([st.cost for st in subtasks_of_node]),
+            cpu=subtasks_of_node[0].cpu,
+            begin_time=min([st.begin_time for st in subtasks_of_node]),
+            finish_time=max([st.finish_time for st in subtasks_of_node]),
+            subtask_name=f"N{node}",
+        )
+        merged_sched.schedule.append(merged_subtask)
+
+    return merged_sched
+
