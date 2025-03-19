@@ -149,6 +149,8 @@ def slice_tasks(sched: Schedule):
 
 def laten_subtask_finish(sched: Schedule) -> float:
 
+    new_sched = sched.copy()
+
     global_finish_time = max(
         [subtask.finish_time for subtask in sched.schedule]
     )
@@ -157,21 +159,42 @@ def laten_subtask_finish(sched: Schedule) -> float:
         if sched.task.succ[subtask.node]:
             succ_nodes = sched.task.succ[subtask.node]
             succ_subtasks = [subtask for subtask in sched.schedule if subtask.node in succ_nodes]
-            sched.schedule[i].finish_time = min([subtask.begin_time for subtask in succ_subtasks])
+            new_sched.schedule[i].finish_time = min([subtask.begin_time for subtask in succ_subtasks])
+            # new_subtask = Subtask(
+            #     node=subtask.node,
+            #     cost=subtask.cost,
+            #     cpu=subtask.cpu,
+            #     begin_time=subtask.begin_time,
+            #     finish_time=min([subtask.begin_time for subtask in succ_subtasks]),
+            #     subtask_name=subtask.subtask_name,
+            #     in_slice=subtask.in_slice,
+            # )
         else:
-            sched.schedule[i].finish_time = global_finish_time
+            new_sched.schedule[i].finish_time = global_finish_time
+            # new_subtask = Subtask(
+            #     node=subtask.node,
+            #     cost=subtask.cost,
+            #     cpu=subtask.cpu,
+            #     begin_time=subtask.begin_time,
+            #     finish_time=global_finish_time, #
+            #     subtask_name=subtask.subtask_name,
+            #     in_slice=subtask.in_slice,
+            # )
+        # new_sched.add(new_subtask)
     
-    return sched
+    return new_sched
 
 
 def adjust_sliced_schedule(sched: SlicedSchedule, t_arr: np.array) -> SlicedSchedule:
+
+    new_sched = sched.copy()
     
     for i, subtask in enumerate(sched.schedule):
 
         in_slice = subtask.in_slice
 
-        sched.schedule[i].begin_time = sum(t_arr[:in_slice])
-        sched.schedule[i].finish_time = sum(t_arr[:in_slice+1])
+        new_sched.schedule[i].begin_time = sum(t_arr[:in_slice])
+        new_sched.schedule[i].finish_time = sum(t_arr[:in_slice+1])
 
     for i, subtask in enumerate(sched.schedule):
         subtasks_of_node = [st for st in sched.schedule if st.node == subtask.node]
@@ -182,11 +205,11 @@ def adjust_sliced_schedule(sched: SlicedSchedule, t_arr: np.array) -> SlicedSche
         # print(f"window of N{subtask.node}: {window_of_subtasks}")
         # print(f"")
 
-        sched.schedule[i].cost = sched.task.cost[subtask.node] * cost_ratio
+        new_sched.schedule[i].cost = sched.task.cost[subtask.node] * cost_ratio
 
-    sched.slice_points = [sum(t_arr[:i+1]) for i in range(len(t_arr))]
+    new_sched.slice_points = [sum(t_arr[:i+1]) for i in range(len(t_arr))]
 
-    return sched
+    return new_sched
 
 
 def optimize_energy(sched: SlicedSchedule) -> SlicedSchedule:
@@ -236,12 +259,10 @@ def merge_slices(sched: SlicedSchedule) -> Schedule:
 
 
 def schedule_federated(task: DAGTask) -> Schedule:
-    
+
     sched = init_schedule(task)
-    # decomp.show()
 
     sched = laten_subtask_finish(sched)
-    # latened.show()
 
     sliced_sched = slice_tasks(sched)
 
@@ -250,4 +271,3 @@ def schedule_federated(task: DAGTask) -> Schedule:
     sched = merge_slices(sliced_sched)
 
     return sched
-
