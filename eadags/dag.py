@@ -17,7 +17,7 @@ gamma = 2.0
 
 
 def critical_freq():
-    return math.sqrt(alpha / beta)
+    return math.sqrt(beta / alpha)
 
 
 @dataclass
@@ -53,7 +53,6 @@ class DAGTask:
         # return plt.get_cmap("tab20")(np.linspace(0.15, 0.85, 512))
 
     def __post_init__(self):
-        assert self.succ or self.prec
 
         if self.succ:
             self.prec = {
@@ -65,6 +64,9 @@ class DAGTask:
                 node: {k for k, v in self.prec.items() if node in v}
                 for node in self.nodes
             }
+        else:
+            self.prec = self.succ = {}
+            return
 
         for node in self.nodes:
             if node not in self.succ:
@@ -117,10 +119,10 @@ class Subtask:
 
     def power(self) -> float:
         if self.finish_time - self.begin_time < 1e-4:
-            return 999999
+            return 9999999999
 
         freq = self.cost / (self.finish_time - self.begin_time)
-        return alpha * (freq**gamma) + beta
+        return (alpha * (freq**gamma) + beta) * (self.finish_time - self.begin_time)
 
     def copy(self):
         return Subtask(
@@ -247,21 +249,7 @@ class SlicedSchedule(Schedule):
     def power(self):
         merged = merge_slices(self)
         return merged.power()
-        # power_dyn = 0
-        # for node in self.task.nodes:
-        #     subtasks_of_node = [st for st in self.schedule if st.node == self.node]
-        #     times_of_subtasks = [st.finish_time - st.begin_time for st in subtasks_of_node]
-        #     time_of_node = sum(times_of_subtasks)
-        #     freq = self.task.cost[node] / time_of_node
-
-        # makespan = max([subtask.finish_time for subtask in self.schedule])
-        # cpu_num = len(set(subtask.cpu for subtask in self.schedule))
-        # power_sta = cpu_num * beta * makespan
-
-    def subtasks_idx_of_node(self, node: int) -> List[int]:
-        ret = []
-        return ret
-
+    
     def visualize_to(self, ax: plt.Axes, *, title="", cmap=None, label_style=""):
 
         cmap = np.array(
@@ -403,4 +391,3 @@ def merge_slices(sched: SlicedSchedule) -> Schedule:
         merged_sched.schedule.append(merged_subtask)
 
     return merged_sched
-

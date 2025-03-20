@@ -209,7 +209,7 @@ def optimize_energy(sched: SlicedSchedule) -> SlicedSchedule:
         return tmp_sched.power()
     
     # res = minimize(optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={"maxiter": 1000})
-    res = minimize(optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={"maxiter": 1000})
+    res = minimize(optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={})
 
     if not res.success:
         print(res)
@@ -219,6 +219,9 @@ def optimize_energy(sched: SlicedSchedule) -> SlicedSchedule:
     t_arr = res.x
 
     adjusted_sched = adjust_sliced_schedule(sched, t_arr)
+
+    # verify total cost identicality
+    # print(sum([st.cost for st in adjusted_sched.schedule]), sum(sched.task.cost.values()))
 
     return adjusted_sched
 
@@ -255,9 +258,15 @@ def energy_merged(sched: SlicedSchedule) -> float:
           for i, tslice in enumerate(sched.time_slices)
     ]
 
+    sta_cost = beta * sched.makespan()
+    # print(f"sta: {sta_cost}, makespan: {sched.makespan()}")
+
     while True:
 
-        new_power = power
+        if merged_m < 2:
+            break
+
+        dyn_overhead = 0
 
         for i, tslice in enumerate(sched.time_slices):
 
@@ -272,37 +281,32 @@ def energy_merged(sched: SlicedSchedule) -> float:
             cost_a, cost_b = costs[:2]
 
             freq_a = cost_a / tslice.length
-            power_a = alpha * freq_a ** gamma
+            power_a = alpha * (freq_a ** gamma)
             freq_b = cost_b / tslice.length
-            power_b = alpha * freq_b ** gamma
+            power_b = alpha * (freq_b ** gamma)
             
             freq_ab = (cost_a + cost_b) / tslice.length
-            power_ab = alpha * freq_ab ** gamma
+            power_ab = alpha * (freq_ab ** gamma)
 
-            dyn_overhead = power_ab - (power_a + power_b)
-            new_power += dyn_overhead
+            dyn_overhead += (power_ab - (power_a + power_b)) * tslice.length
+
+            # print(f"costs from {costs} to {costs[2:] + [cost_a + cost_b]}")
 
             costs = costs[2:] + [cost_a + cost_b]
             costs_in_slices[i] = costs
 
-        sta_cost = beta * sched.makespan()
-        # print(sta_cost)
-        new_power -= sta_cost
+        # print(dyn_overhead, sta_cost)
 
-        merged_m -= 1
-
-        if merged_m < 0:
-            exit(0)
-
-        if merged_m > sched.task.core or new_power < power:
-            print(f"m {merged_m + 1} -> {merged_m} ,power: {power} -> {new_power}")
+        if merged_m > sched.task.core or dyn_overhead < sta_cost:
+            # print(f"m {merged_m + 1} -> {merged_m} ,power: {power} -> {new_power}")
+            merged_m -= 1
+            new_power = power + dyn_overhead - sta_cost
             power = new_power
             continue
         break
 
+    print(f"m {sched.m} -> {merged_m}")
     return power
-        
-
 
 
 def merge_processor(sched: SlicedSchedule, target_num: int = None):
@@ -331,3 +335,14 @@ def merge_processor(sched: SlicedSchedule, target_num: int = None):
     #         )
 
     #     if sched.m
+
+def power_lbound(task: DAGTask) -> float:
+
+    total_cost = sum([cost for cost in task.cost.values()])
+    freq = critical_freq()
+    makespan = total_cost / freq
+
+    power_sta = beta * makespan
+    power_dyn = alpha * (freq ** gamma) * makespan
+
+    return power_sta + power_dyn
