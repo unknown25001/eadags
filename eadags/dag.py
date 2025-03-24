@@ -136,6 +136,29 @@ class Subtask:
         )
 
 
+class MergedSubtask(Subtask):
+    tasks: List[Subtask]
+    cpu: int
+    in_slice: int
+    subtask_name: str
+    cost: float
+
+    def __init__(self, tasks: List[Subtask], cpu: int):
+        self.tasks = tasks
+        self.cpu = cpu
+        self.in_slice = tasks[0].in_slice
+        self.subtask_name = "+".join([t.subtask_name for t in tasks])
+        self.cost = sum([subtask.cost for subtask in tasks])
+
+    def power(self) -> float:
+        return sum([subtask.power() for subtask in self.tasks])
+
+    def copy(self):
+        return MergedSubtask(
+            tasks=[subtask.copy() for subtask in self.tasks],
+            cpu=self.cpu,
+        )
+
 class Schedule:
     task: DAGTask
     schedule: List[Subtask]

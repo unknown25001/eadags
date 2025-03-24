@@ -1,9 +1,3 @@
-"""
-Energy-Efficient Real-Time Scheduling of DAG Tasks
-by Bhuiyan, Guo et al. (2018)
-https://dl.acm.org/doi/10.1145/3241049
-"""
-
 from ast import Sub
 import enum
 import sched
@@ -151,7 +145,7 @@ def slice_tasks(sched: Schedule):
     return new_sched
     
 
-def laten_subtask_finish(sched: Schedule) -> float:
+def laten_subtask_finish(sched: Schedule) -> Schedule:
 
     new_sched = sched.copy()
 
