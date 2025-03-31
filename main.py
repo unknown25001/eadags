@@ -8,6 +8,7 @@ import matplotlib.animation as animation
 from eadags.algo import federated
 from eadags.dag import DAGTask, dag_from_process
 from eadags.algo.federated import *
+from eadags.generate import *
 
 proc = subprocess.Popen(["bash", pathlib.Path("./tmp/run.sh")], stdout=subprocess.PIPE)
 
@@ -83,6 +84,15 @@ TASK_SINGLE = DAGTask(
     succ={1: {2}},
 )
 
+TASK_BIG_PARALLEL = DAGTask(
+    cost={1: 1, 2: 5, 3: 5, 4: 5, 5: 5, 6: 1},
+    succ={1: {2, 3, 4, 5}, 2: {6}, 3: {6}, 4: {6}, 5: {6}}
+)
+
+TASK_STRANGE_1 = DAGTask(
+    cost={1: 1, 2: 2, 3: 2},
+    succ={1: {2}}
+)
 
 def main():
 
@@ -161,6 +171,27 @@ def main():
 
 if __name__ == "__main__":
 
-    main()
+    # main()
 
     # expr_nodenum_to_approx()
+
+    # fig, (ax1, ax2) = plt.subplots(ncols=2)
+
+    # task = TASK_BIG_PARALLEL
+    # # task.visualize_to(ax1)
+    # # init_schedule(task).visualize_to(ax2)
+
+    # # init_schedule(task).show()
+
+    # s = init_schedule(task)
+    # s = laten_subtask_finish(s)
+    # sl_s = slice_tasks(s)
+
+    # sl_s = split_slice(sl_s)
+    # s = merge_slices(sl_s)
+    # s.show()
+
+    # plt.show()
+
+    task = TASK_STRANGE_1
+    schedule_federated(task).show()

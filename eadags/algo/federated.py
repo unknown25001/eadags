@@ -7,7 +7,19 @@ import numpy as np
 from typing import List
 from queue import PriorityQueue
 
-from ..dag import DAGTask, Schedule, Subtask, CPUs, SlicedSchedule, TimeSlice, merge_slices, alpha, beta, gamma, critical_freq
+from ..dag import (
+    DAGTask,
+    Schedule,
+    Subtask,
+    CPUs,
+    SlicedSchedule,
+    TimeSlice,
+    merge_slices,
+    alpha,
+    beta,
+    gamma,
+    critical_freq,
+)
 
 from scipy.optimize import minimize
 
@@ -85,19 +97,28 @@ def strech_makespan(sched: Schedule) -> Schedule:
     return sched
 
 
+def time_slices_to_slice_points(time_slices: List[TimeSlice]) -> List[float]:
+    
+    points = [ts.begin_time for ts in time_slices] + \
+        [ts.finish_time for ts in time_slices]
+    return list(set(points))
+
+
 def slice_points_to_time_slices(points: List[float]) -> List[TimeSlice]:
 
     time_slices = []
 
     points_start_with_0 = points
     for i in range(len(points) - 1):
-        time_slices.append(TimeSlice(points_start_with_0[i], points_start_with_0[i + 1]))
+        time_slices.append(
+            TimeSlice(points_start_with_0[i], points_start_with_0[i + 1])
+        )
 
     return time_slices
 
 
 def slice_tasks(sched: Schedule):
-    
+
     slice_points = []
     for subtask in sched.schedule:
         slice_points.append(subtask.begin_time)
@@ -108,17 +129,19 @@ def slice_tasks(sched: Schedule):
 
     time_slices = slice_points_to_time_slices(slice_points)
 
-
     sliced_schedule: List[Subtask] = []
     subtask_cnt = 1
 
     for subtask in sched.schedule:
 
-        local_slice_points = \
-            [point for point in slice_points if point > subtask.begin_time and point < subtask.finish_time]
+        local_slice_points = [
+            point
+            for point in slice_points
+            if point > subtask.begin_time and point < subtask.finish_time
+        ]
         slice_start = subtask.begin_time
 
-        for slice_end in (local_slice_points + [subtask.finish_time]):
+        for slice_end in local_slice_points + [subtask.finish_time]:
             cost_ratio = (slice_end - slice_start) / subtask.cost
             sliced_subtask = Subtask(
                 node=subtask.node,
@@ -127,37 +150,38 @@ def slice_tasks(sched: Schedule):
                 begin_time=slice_start,
                 finish_time=slice_end,
                 in_slice=slice_point_to_slice_index[slice_start],
-                subtask_name=f"N{subtask.node}.{slice_point_to_slice_index[slice_start]}"
+                subtask_name=f"N{subtask.node}.{slice_point_to_slice_index[slice_start]}",
             )
-            
+
             sliced_schedule.append(sliced_subtask)
 
             subtask_cnt += 1
             slice_start = slice_end
-
 
     new_sched = SlicedSchedule(sched.task)
     new_sched.schedule = sliced_schedule
     new_sched.task = sched.task
     new_sched.slice_points = slice_points
     new_sched.time_slices = time_slices
-    
+
     return new_sched
-    
+
 
 def laten_subtask_finish(sched: Schedule) -> Schedule:
 
     new_sched = sched.copy()
 
-    global_finish_time = max(
-        [subtask.finish_time for subtask in sched.schedule]
-    )
-    
+    global_finish_time = max([subtask.finish_time for subtask in sched.schedule])
+
     for i, subtask in enumerate(sched.schedule):
         if sched.task.succ[subtask.node]:
             succ_nodes = sched.task.succ[subtask.node]
-            succ_subtasks = [subtask for subtask in sched.schedule if subtask.node in succ_nodes]
-            new_sched.schedule[i].finish_time = min([subtask.begin_time for subtask in succ_subtasks])
+            succ_subtasks = [
+                subtask for subtask in sched.schedule if subtask.node in succ_nodes
+            ]
+            new_sched.schedule[i].finish_time = min(
+                [subtask.begin_time for subtask in succ_subtasks]
+            )
         else:
             new_sched.schedule[i].finish_time = global_finish_time
     return new_sched
@@ -166,13 +190,13 @@ def laten_subtask_finish(sched: Schedule) -> Schedule:
 def adjust_sliced_schedule(sched: SlicedSchedule, t_arr: np.array) -> SlicedSchedule:
 
     new_sched = sched.copy()
-    
+
     for i, subtask in enumerate(sched.schedule):
 
         in_slice = subtask.in_slice
 
         new_sched.schedule[i].begin_time = sum(t_arr[:in_slice])
-        new_sched.schedule[i].finish_time = sum(t_arr[:in_slice+1])
+        new_sched.schedule[i].finish_time = sum(t_arr[: in_slice + 1])
 
     for i, subtask in enumerate(sched.schedule):
         subtasks_of_node = [st for st in sched.schedule if st.node == subtask.node]
@@ -185,7 +209,7 @@ def adjust_sliced_schedule(sched: SlicedSchedule, t_arr: np.array) -> SlicedSche
 
         new_sched.schedule[i].cost = sched.task.cost[subtask.node] * cost_ratio
 
-    new_sched.slice_points = [0.0] + [sum(t_arr[:i+1]) for i in range(len(t_arr))]
+    new_sched.slice_points = [0.0] + [sum(t_arr[: i + 1]) for i in range(len(t_arr))]
     new_sched.time_slices = slice_points_to_time_slices(new_sched.slice_points)
 
     return new_sched
@@ -201,9 +225,11 @@ def optimize_energy(sched: SlicedSchedule) -> SlicedSchedule:
     def optm_obj(t_arr: np.array) -> float:
         tmp_sched = adjust_sliced_schedule(sched, t_arr)
         return tmp_sched.power()
-    
+
     # res = minimize(optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={"maxiter": 1000})
-    res = minimize(optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={})
+    res = minimize(
+        optm_obj, seg_lengths, bounds=[(0, None) for _ in seg_lengths], options={}
+    )
 
     if not res.success:
         print(res)
@@ -249,7 +275,7 @@ def energy_merged(sched: SlicedSchedule) -> float:
 
     costs_in_slices = [
         [st.cost for st in sched.schedule if st.in_slice == i]
-          for i, tslice in enumerate(sched.time_slices)
+        for i, tslice in enumerate(sched.time_slices)
     ]
 
     sta_cost = beta * sched.makespan()
@@ -275,12 +301,12 @@ def energy_merged(sched: SlicedSchedule) -> float:
             cost_a, cost_b = costs[:2]
 
             freq_a = cost_a / tslice.length
-            power_a = alpha * (freq_a ** gamma)
+            power_a = alpha * (freq_a**gamma)
             freq_b = cost_b / tslice.length
-            power_b = alpha * (freq_b ** gamma)
-            
+            power_b = alpha * (freq_b**gamma)
+
             freq_ab = (cost_a + cost_b) / tslice.length
-            power_ab = alpha * (freq_ab ** gamma)
+            power_ab = alpha * (freq_ab**gamma)
 
             dyn_overhead += (power_ab - (power_a + power_b)) * tslice.length
 
@@ -330,6 +356,7 @@ def merge_processor(sched: SlicedSchedule, target_num: int = None):
 
     #     if sched.m
 
+
 def power_lbound(task: DAGTask) -> float:
 
     total_cost = sum([cost for cost in task.cost.values()])
@@ -337,6 +364,60 @@ def power_lbound(task: DAGTask) -> float:
     makespan = total_cost / freq
 
     power_sta = beta * makespan
-    power_dyn = alpha * (freq ** gamma) * makespan
+    power_dyn = alpha * (freq**gamma) * makespan
 
     return power_sta + power_dyn
+
+
+def split_slice(sched: SlicedSchedule) -> SlicedSchedule:
+
+    new_sched = sched.copy()
+
+    st_in_slice = [
+        [st for st in sched.schedule if st.in_slice == i]
+        for i, slice in enumerate(sched.time_slices)
+    ]
+
+    n_in_slice = [len(sts) for sts in st_in_slice]
+
+    i_slice_with_max_st = np.argmax(n_in_slice)
+
+    # spliting
+    i_tgt_slice = i_slice_with_max_st
+    len_tgt_slice = new_sched.time_slices[i_tgt_slice].length
+
+    st_to_split = [st.copy() for st in new_sched.schedule if st.in_slice == i_tgt_slice]
+
+    st_stay = st_to_split[: len(st_to_split) // 2]
+    st_move = st_to_split[len(st_to_split) // 2 :]
+
+    # print(len(st_move), len(st_stay))
+    assert len(st_move) <= len(st_stay), "不满足 move less than stay"
+
+    new_subtasks = [
+        st.copy() for st in new_sched.schedule if st.in_slice != i_tgt_slice
+    ]
+    new_subtasks += st_stay
+    for i, st in enumerate(new_subtasks):
+        if st.in_slice > i_tgt_slice:
+            new_subtasks[i].in_slice += 1
+            new_subtasks[i].begin_time += len_tgt_slice
+            new_subtasks[i].finish_time += len_tgt_slice
+
+    for i, st in enumerate(st_move):
+        st.in_slice = i_tgt_slice + 1
+        st.begin_time += len_tgt_slice
+        st.finish_time += len_tgt_slice
+        st.cpu = st_stay[i].cpu
+
+        new_subtasks += [st.copy()]
+
+
+    new_sched.schedule = new_subtasks
+    new_sched.time_slices = \
+        sched.time_slices[: i_tgt_slice] + \
+        [sched.time_slices[i_tgt_slice]] + \
+        sched.time_slices[i_tgt_slice :]
+    new_sched.slice_points = time_slices_to_slice_points(new_sched.time_slices)
+
+    return new_sched
